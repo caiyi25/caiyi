@@ -404,14 +404,14 @@ class ChineseNewsScraper:
 
                 elif source.name == "CGTN China":
                     try:
+                        # Wait for the article container to load
                         WebDriverWait(self.driver, 30).until(
                             EC.presence_of_element_located((By.XPATH, source.article_selector))
                         )
                         
+                        # Find all article elements
                         article_titles = WebDriverWait(self.driver, 30).until(
-                            EC.presence_of_all_elements_located(
-                                (By.XPATH, source.article_selector)
-                            )
+                            EC.presence_of_all_elements_located((By.XPATH, source.article_selector))
                         )
                         
                         debug_file = f"logs/debug_{source.name.lower().replace(' ', '_')}_{retry_count}.html"
@@ -421,43 +421,32 @@ class ChineseNewsScraper:
                         
                         for title_elem in article_titles:
                             try:
+                                # Extract the article title from the main page
                                 title = self.content_processor.clean_text(title_elem.text)
-                                article_url = title_elem.get_attribute('href')
                                 
-                                if not title or not article_url:
-                                    logger.warning("Missing title or URL, skipping article")
+                                if not title:
+                                    logger.warning("Missing title, skipping article")
                                     continue
                                 
                                 logger.info(f"Processing article: {title}")
                                 
-                                article_hash = hashlib.md5(
-                                    f"{title}{article_url}{source.name}".encode('utf-8')
-                                ).hexdigest()
-                                
-                                if article_hash in self.article_cache:
-                                    logger.debug(f"Article already processed: {title}")
-                                    continue
-                                
-                                current_url = self.driver.current_url
-                                
+                                # Click on the article to navigate to the content page
                                 title_elem.click()
                                 
-                                content_div = WebDriverWait(self.driver, 30).until(
+                                # Wait for the title on the content page to load
+                                article_title = WebDriverWait(self.driver, 30).until(
+                                    EC.presence_of_element_located((By.XPATH, source.title_selector))
+                                ).text
+                                
+                                # Extract the body content
+                                body_div = WebDriverWait(self.driver, 30).until(
                                     EC.presence_of_element_located((By.XPATH, source.body_selector))
                                 )
-                                
-                                paragraphs = content_div.find_elements(By.TAG_NAME, "p")
-                                body_text = []
-                                
-                                for para in paragraphs:
-                                    para_text = para.text.strip()
-                                    if para_text:
-                                        body_text.append(para_text)
-                                
-                                body_text = "\n".join(body_text)
+                                paragraphs = body_div.find_elements(By.TAG_NAME, "p")
+                                body_text = "\n".join([para.text.strip() for para in paragraphs if para.text.strip()])
                                 body_text = self.content_processor.clean_text(body_text)
                                 
-                                # Extract image URL
+                                # Extract the image URL
                                 image_url = None
                                 if source.image_selector:
                                     try:
@@ -466,33 +455,44 @@ class ChineseNewsScraper:
                                     except Exception as e:
                                         logger.warning(f"Could not extract image URL: {str(e)}")
                                 
-                                if len(body_text) < 50:
-                                    logger.warning(f"Article content too short: {article_url}")
-                                    self.driver.get(current_url)
+                                # Generate a unique hash for the article
+                                article_hash = hashlib.md5(
+                                    f"{title}{self.driver.current_url}{source.name}".encode('utf-8')
+                                ).hexdigest()
+                                
+                                if article_hash in self.article_cache:
+                                    logger.debug(f"Article already processed: {title}")
+                                    self.driver.back()  # Navigate back to the main page
+                                    await asyncio.sleep(2)
                                     continue
                                 
-                                self.article_cache.add(article_hash)
-                                articles.append({
-                                    'source': source.name,
-                                    'title': title,
-                                    'date': datetime.now().isoformat(),
-                                    'link': article_url,
-                                    'body': body_text,
-                                    'content_type': source.content_type.value,
-                                    'language': source.language,
-                                    'hash': article_hash,
-                                    'timestamp': datetime.now().isoformat(),
-                                    'image_url': image_url  # Add image URL to the output
-                                })
+                                # Add the article to the list if the body content is sufficient
+                                if len(body_text) >= 50:
+                                    self.article_cache.add(article_hash)
+                                    articles.append({
+                                        'source': source.name,
+                                        'title': article_title,
+                                        'date': datetime.now().isoformat(),
+                                        'link': self.driver.current_url,
+                                        'body': body_text,
+                                        'content_type': source.content_type.value,
+                                        'language': source.language,
+                                        'hash': article_hash,
+                                        'timestamp': datetime.now().isoformat(),
+                                        'image_url': image_url
+                                    })
+                                    logger.info(f"Successfully processed CGTN China article: {article_title}")
+                                else:
+                                    logger.warning(f"Article content too short: {self.driver.current_url}")
                                 
-                                logger.info(f"Successfully processed CGTN China article: {title}")
-                                
-                                self.driver.get(current_url)
+                                # Navigate back to the main page
+                                self.driver.back()
                                 await asyncio.sleep(2)
                                 
                             except Exception as e:
                                 logger.error(f"Error processing CGTN China article: {str(e)}")
-                                self.driver.get(current_url)
+                                self.driver.back()  # Navigate back to the main page in case of errors
+                                await asyncio.sleep(2)
                                 continue
                                 
                     except Exception as e:
@@ -533,7 +533,13 @@ class ChineseNewsScraper:
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
 
         json_filename = f"output/chinese_news_{timestamp}.json"
-        df.to_json(json_filename, orient='records', force_ascii=False, indent=2)
+        
+        # Convert DataFrame to a list of dictionaries
+        articles_list = df.to_dict(orient='records')
+        
+        # Save the JSON with proper indentation
+        with open(json_filename, 'w', encoding='utf-8') as f:
+            json.dump(articles_list, f, ensure_ascii=False, indent=4)
 
         logger.info(f"Saved results to {json_filename}")
 
@@ -569,8 +575,8 @@ NEWS_SOURCES = [
         name="CGTN China",
         url="https://www.cgtn.com/china",
         content_type=ContentType.NEWS,
-        article_selector='//div[@class="news-item-intro"]//a[@class="news-headline"]',
-        title_selector='//div[@class="news-item-intro"]//a[@class="news-headline"]',
+        article_selector='/html/body/div[1]/div[5]/div[1]/div/div[1]/div[2]/h3',
+        title_selector='/html/body/div[1]/div[4]/div/div/div[2]/div[1]/div[1]/div/h1',
         body_selector='//*[@id="cmsMainContent"]/div[2]',
         date_selector='',
         link_selector='//div[@class="news-item-intro"]//a[@class="news-headline"]',
