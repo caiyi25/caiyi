@@ -1,0 +1,16 @@
+# Ignore environment files
+.env
+
+# Ignore Python cache and compiled files
+__pycache__/
+*.py[cod]
+
+# Ignore other common files
+*.log
+venv/
+*.tmp
+*.bak
+*.swp
+*.DS_Store
+log/
+output/
