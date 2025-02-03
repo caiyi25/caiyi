@@ -55,7 +55,7 @@ class NewsSource:
     body_selector: str
     date_selector: str
     link_selector: str
-    image_selector: Optional[str] = None  # Add this line
+    image_selector: Optional[str] = None
     content_selector: Optional[str] = None
     category_selector: Optional[str] = None
     language: str = "en"
@@ -205,7 +205,7 @@ class ChineseNewsScraper:
                 article_container = WebDriverWait(self.driver, 30).until(
                     EC.presence_of_element_located((
                         By.XPATH,
-                        source.body_selector  # Use the updated body selector
+                        source.body_selector
                     ))
                 )
                 
@@ -237,7 +237,7 @@ class ChineseNewsScraper:
                         'language': source.language,
                         'hash': article_hash,
                         'timestamp': datetime.now().isoformat(),
-                        'image_url': image_url  # Add image URL to the output
+                        'image_url': image_url
                     }
                 else:
                     logger.warning(f"Article content too short: {article_url}")
@@ -384,7 +384,7 @@ class ChineseNewsScraper:
                                     'language': source.language,
                                     'hash': article_hash,
                                     'timestamp': datetime.now().isoformat(),
-                                    'image_url': image_url  # Add image URL to the output
+                                    'image_url': image_url
                                 })
                                 
                                 logger.info(f"Successfully processed CGTN article: {title}")
@@ -462,7 +462,7 @@ class ChineseNewsScraper:
                                 
                                 if article_hash in self.article_cache:
                                     logger.debug(f"Article already processed: {title}")
-                                    self.driver.back()  # Navigate back to the main page
+                                    self.driver.back()
                                     await asyncio.sleep(2)
                                     continue
                                 
@@ -491,7 +491,7 @@ class ChineseNewsScraper:
                                 
                             except Exception as e:
                                 logger.error(f"Error processing CGTN China article: {str(e)}")
-                                self.driver.back()  # Navigate back to the main page in case of errors
+                                self.driver.back()
                                 await asyncio.sleep(2)
                                 continue
                                 
@@ -551,10 +551,10 @@ NEWS_SOURCES = [
         content_type=ContentType.NEWS,
         article_selector='//*[@id="main_section01"]/div/div[2]/div[1]/a',
         title_selector='/html/body/div[4]/div/div/div[2]/div[1]/div[2]',
-        body_selector='//div[@class="article_content"]',  # Updated body selector
-        date_selector='',  # Using current timestamp
+        body_selector='//div[@class="article_content"]',
+        date_selector='',
         link_selector='//*[@id="main_section01"]/div/div[2]/div[1]/a',
-        image_selector='//div[@class="article_content"]//img',  # Updated image selector
+        image_selector='//div[@class="article_content"]//img',
         language="en",
         requires_js=True
     ),
@@ -567,7 +567,7 @@ NEWS_SOURCES = [
         body_selector='//*[@id="cmsMainContent"]',
         date_selector='',
         link_selector='/html/body/div[1]/div[5]/div[1]/div/div[1]/div[2]/h3/a',
-        image_selector='//div[@class="cmsImage"]/img',  # Add image selector
+        image_selector='//div[@class="cmsImage"]/img',
         language="en",
         requires_js=True
     ),
