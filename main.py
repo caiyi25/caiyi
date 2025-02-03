@@ -1,5 +1,4 @@
 import asyncio
-import os
 import json
 import uvicorn
 from fastapi import FastAPI, HTTPException
@@ -17,25 +16,11 @@ async def scrape_news():
         # Run the scraper
         df = await scraper.scrape_all_sources()
         
-        # Check if the output file was created
-        output_dir = 'output'
-        if not os.path.exists(output_dir):
-            raise HTTPException(status_code=500, detail="Output directory not found")
+        # Convert DataFrame to a list of dictionaries
+        articles_list = df.to_dict(orient='records')
         
-        # Find the latest JSON file
-        json_files = [f for f in os.listdir(output_dir) if f.endswith('.json')]
-        if not json_files:
-            raise HTTPException(status_code=500, detail="No JSON output file found")
-        
-        latest_file = max(json_files, key=lambda x: os.path.getctime(os.path.join(output_dir, x)))
-        file_path = os.path.join(output_dir, latest_file)
-        
-        # Read the JSON file
-        with open(file_path, 'r', encoding='utf-8') as f:
-            data = json.load(f)
-        
-        # Return the JSON data as the response
-        return JSONResponse(content=data)
+        # Return the JSON response with proper indentation
+        return JSONResponse(content=articles_list, media_type="application/json")
     
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
