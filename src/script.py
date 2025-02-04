@@ -118,35 +118,29 @@ class ChineseNewsScraper:
         self.user_agent = UserAgent()
         self.content_processor = ContentProcessor()
         self.article_cache = set()
-
+    
         self.chrome_options = webdriver.ChromeOptions()
         self.chrome_options.add_argument("--headless")
         self.chrome_options.add_argument("--disable-gpu")
         self.chrome_options.add_argument("--no-sandbox")
         self.chrome_options.add_argument("--disable-dev-shm-usage")
-        self.chrome_options.add_argument('--disable-extensions')
-        self.chrome_options.add_argument('--disable-software-rasterizer')
-        self.chrome_options.add_argument('--remote-debugging-port=9222')
+        self.chrome_options.add_argument("--remote-debugging-port=9222")
+        self.chrome_options.add_argument("--disable-software-rasterizer")
+        self.chrome_options.add_argument("--disable-extensions")
+        self.chrome_options.add_argument("--disable-features=NetworkService,VizDisplayCompositor")
+        self.chrome_options.add_argument("--disable-web-security")
+        self.chrome_options.add_argument("--disable-site-isolation-trials")
+        self.chrome_options.add_argument("--ignore-certificate-errors")
         self.chrome_options.add_argument(f"user-agent={self.user_agent.random}")
-        
-        self.chrome_options.add_argument('--disable-features=NetworkService')
-        self.chrome_options.add_argument('--disable-features=VizDisplayCompositor')
-        self.chrome_options.add_argument('--disable-web-security')
-        self.chrome_options.add_argument('--disable-site-isolation-trials')
-        self.chrome_options.add_argument('--ignore-certificate-errors')
-        
-        self.chrome_options.add_experimental_option('prefs', {
-            'profile.default_content_setting_values.images': 2,
-            'disk-cache-size': 4096,
-            'profile.default_content_settings.popups': 0,
-            'profile.default_content_setting_values.notifications': 2
-        })
-
+    
         self.temp_dir = tempfile.mkdtemp()
         self.chrome_options.add_argument(f'--user-data-dir={self.temp_dir}')
-
+    
         try:
-            self.service = ChromeService(ChromeDriverManager().install())
+            self.service = ChromeService(
+                ChromeDriverManager().install(),
+                log_path="logs/chromedriver.log"
+            )
             self.driver = webdriver.Chrome(
                 service=self.service,
                 options=self.chrome_options
@@ -154,7 +148,6 @@ class ChineseNewsScraper:
             self.driver.set_page_load_timeout(100)
             self.driver.set_script_timeout(100)
             self.driver.implicitly_wait(40)
-            
         except Exception as e:
             logger.error(f"Failed to initialize Chrome driver: {e}")
             raise
