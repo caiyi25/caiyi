@@ -135,7 +135,13 @@ class ChineseNewsScraper:
     
         self.temp_dir = tempfile.mkdtemp()
         self.chrome_options.add_argument(f'--user-data-dir={self.temp_dir}')
-    
+        
+        self.session = requests.Session()
+        self.driver = None
+        self.service = None
+        self._initialize_driver()
+
+    def _initialize_driver(self):
         try:
             self.service = ChromeService(
                 ChromeDriverManager().install(),
@@ -152,7 +158,18 @@ class ChineseNewsScraper:
             logger.error(f"Failed to initialize Chrome driver: {e}")
             raise
 
-        self.session = requests.Session()
+    def cleanup(self):
+        """Clean up browser resources"""
+        try:
+            if self.driver:
+                self.driver.quit()
+                logger.info("Browser closed successfully")
+            if self.temp_dir and os.path.exists(self.temp_dir):
+                import shutil
+                shutil.rmtree(self.temp_dir, ignore_errors=True)
+                logger.info("Temporary directory cleaned up")
+        except Exception as e:
+            logger.error(f"Error during cleanup: {e}")
 
     def _get_headers(self) -> Dict[str, str]:
         return {
@@ -509,17 +526,23 @@ class ChineseNewsScraper:
         return articles
 
     async def scrape_all_sources(self) -> pd.DataFrame:
-        all_articles = []
-        tasks = [self.scrape_source(source) for source in NEWS_SOURCES]
+        try:
+            all_articles = []
+            tasks = [self.scrape_source(source) for source in NEWS_SOURCES]
 
-        results = await asyncio.gather(*tasks)
-        for articles in results:
-            all_articles.extend(articles)
+            results = await asyncio.gather(*tasks)
+            for articles in results:
+                all_articles.extend(articles)
 
-        df = pd.DataFrame(all_articles)
-        if not df.empty:
-            self._save_results(df)
-        return df
+            df = pd.DataFrame(all_articles)
+            if not df.empty:
+                self._save_results(df)
+            return df
+        except Exception as e:
+            logger.error(f"Error during scraping: {e}")
+            raise
+        finally:
+            self.cleanup()
 
     def _save_results(self, df: pd.DataFrame):
         os.makedirs('output', exist_ok=True)
@@ -583,25 +606,34 @@ async def main():
     print("Starting Chinese News Scraper...")
     print("This may take a few minutes. Check logs/scraper.log for detailed progress.")
 
-    scraper = ChineseNewsScraper(max_retries=5, delay=2)
-    df = await scraper.scrape_all_sources()
+    scraper = None
+    try:
+        scraper = ChineseNewsScraper(max_retries=5, delay=2)
+        df = await scraper.scrape_all_sources()
 
-    print("\nScraping Complete!")
-    print("=" * 50)
-    print("\nScraped Articles Summary:")
-    print(f"Total articles: {len(df)}")
+        print("\nScraping Complete!")
+        print("=" * 50)
+        print("\nScraped Articles Summary:")
+        print(f"Total articles: {len(df)}")
 
-    if not df.empty:
-        print("\nSources distribution:")
-        print(df['source'].value_counts())
-        print("\nContent types distribution:")
-        print(df['content_type'].value_counts())
-        print("\nSample of articles:")
-        print(df[['source', 'title', 'date']].head())
-        print("\nResults have been saved to the 'output' directory.")
-    else:
-        print("No articles were scraped. Please check the logs for errors.")
-        print("Debug HTML files have been saved in the logs directory.")
+        if not df.empty:
+            print("\nSources distribution:")
+            print(df['source'].value_counts())
+            print("\nContent types distribution:")
+            print(df['content_type'].value_counts())
+            print("\nSample of articles:")
+            print(df[['source', 'title', 'date']].head())
+            print("\nResults have been saved to the 'output' directory.")
+        else:
+            print("No articles were scraped. Please check the logs for errors.")
+            print("Debug HTML files have been saved in the logs directory.")
+
+    except Exception as e:
+        logger.error(f"Unexpected error in main: {str(e)}")
+        raise
+    finally:
+        if scraper:
+            scraper.cleanup()
 
 if __name__ == "__main__":
     try:
