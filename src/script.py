@@ -151,9 +151,9 @@ class ChineseNewsScraper:
                 service=self.service,
                 options=self.chrome_options
             )
-            self.driver.set_page_load_timeout(60)
-            self.driver.set_script_timeout(60)
-            self.driver.implicitly_wait(20)
+            self.driver.set_page_load_timeout(100)
+            self.driver.set_script_timeout(100)
+            self.driver.implicitly_wait(40)
             
         except Exception as e:
             logger.error(f"Failed to initialize Chrome driver: {e}")
@@ -202,7 +202,7 @@ class ChineseNewsScraper:
             
             try:
                 # Wait for the article container to load
-                article_container = WebDriverWait(self.driver, 30).until(
+                article_container = WebDriverWait(self.driver, 100).until(
                     EC.presence_of_element_located((
                         By.XPATH,
                         source.body_selector
@@ -276,7 +276,7 @@ class ChineseNewsScraper:
                 
                 if source.name == "Global Times":
                     try:
-                        header = WebDriverWait(self.driver, 30).until(
+                        header = WebDriverWait(self.driver, 100).until(
                             EC.presence_of_element_located((
                                 By.XPATH,
                                 '//*[@id="header"]/div/div[2]'
@@ -284,7 +284,7 @@ class ChineseNewsScraper:
                         )
                         logger.info("Global Times header element found")
 
-                        latest_article = WebDriverWait(self.driver, 30).until(
+                        latest_article = WebDriverWait(self.driver, 100).until(
                             EC.presence_of_element_located((
                                 By.XPATH,
                                 '//*[@id="main_section01"]/div/div[2]/div[1]/a'
@@ -306,11 +306,11 @@ class ChineseNewsScraper:
                         
                 elif source.name == "CGTN":
                     try:
-                        WebDriverWait(self.driver, 30).until(
+                        WebDriverWait(self.driver, 100).until(
                             EC.presence_of_element_located((By.XPATH, "/html/body/div[1]/div[4]/h2/a"))
                         )
                         
-                        article_titles = WebDriverWait(self.driver, 30).until(
+                        article_titles = WebDriverWait(self.driver, 100).until(
                             EC.presence_of_all_elements_located(
                                 (By.XPATH, source.article_selector)
                             )
@@ -344,7 +344,7 @@ class ChineseNewsScraper:
                                 
                                 title_elem.click()
                                 
-                                content_div = WebDriverWait(self.driver, 30).until(
+                                content_div = WebDriverWait(self.driver, 100).until(
                                     EC.presence_of_element_located((By.XPATH, source.body_selector))
                                 )
                                 
@@ -405,12 +405,12 @@ class ChineseNewsScraper:
                 elif source.name == "CGTN China":
                     try:
                         # Wait for the article container to load
-                        WebDriverWait(self.driver, 30).until(
+                        WebDriverWait(self.driver, 100).until(
                             EC.presence_of_element_located((By.XPATH, source.article_selector))
                         )
                         
                         # Find all article elements
-                        article_titles = WebDriverWait(self.driver, 30).until(
+                        article_titles = WebDriverWait(self.driver, 100).until(
                             EC.presence_of_all_elements_located((By.XPATH, source.article_selector))
                         )
                         
@@ -434,12 +434,12 @@ class ChineseNewsScraper:
                                 title_elem.click()
                                 
                                 # Wait for the title on the content page to load
-                                article_title = WebDriverWait(self.driver, 30).until(
+                                article_title = WebDriverWait(self.driver, 100).until(
                                     EC.presence_of_element_located((By.XPATH, source.title_selector))
                                 ).text
                                 
                                 # Extract the body content
-                                body_div = WebDriverWait(self.driver, 30).until(
+                                body_div = WebDriverWait(self.driver, 100).until(
                                     EC.presence_of_element_located((By.XPATH, source.body_selector))
                                 )
                                 paragraphs = body_div.find_elements(By.TAG_NAME, "p")
