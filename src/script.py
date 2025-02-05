@@ -188,6 +188,87 @@ class ChineseNewsScraper:
             'Cache-Control': 'max-age=0'
         }
 
+    async def _process_globaltimes_china_article(self, title_elem, source, current_url):
+        """Helper method to process Global Times China articles with error handling"""
+        try:
+            title = self.content_processor.clean_text(title_elem.text)
+            article_url = title_elem.get_attribute('href')
+            
+            if not title or not article_url:
+                logger.warning("Missing title or URL for Global Times China article")
+                return None
+            
+            article_hash = hashlib.md5(
+                f"{title}{article_url}{source.name}".encode('utf-8')
+            ).hexdigest()
+            
+            if article_hash in self.article_cache:
+                logger.debug(f"Article already processed: {title}")
+                return None
+                
+            self.driver.execute_script("window.open('');")
+            self.driver.switch_to.window(self.driver.window_handles[-1])
+            self.driver.get(article_url)
+            
+            try:
+                # Wait for the article container to load
+                article_container = WebDriverWait(self.driver, 100).until(
+                    EC.presence_of_element_located((
+                        By.XPATH,
+                        source.body_selector
+                    ))
+                )
+                
+                # Extract the article title
+                article_title = self.content_processor.clean_text(title)
+                
+                # Extract the body content
+                body_text = article_container.text.strip()
+                body_text = self.content_processor.clean_text(body_text)
+                
+                # Extract the image URL
+                image_url = None
+                if source.image_selector:
+                    try:
+                        image_element = self.driver.find_element(By.XPATH, source.image_selector)
+                        image_url = image_element.get_attribute('src')
+                    except Exception as e:
+                        logger.warning(f"Could not extract image URL: {str(e)}")
+                
+                if len(body_text) > 50:
+                    self.article_cache.add(article_hash)
+                    return {
+                        'source': source.name,
+                        'title': article_title,
+                        'date': datetime.now().isoformat(),
+                        'link': article_url,
+                        'body': body_text,
+                        'content_type': source.content_type.value,
+                        'language': source.language,
+                        'hash': article_hash,
+                        'timestamp': datetime.now().isoformat(),
+                        'image_url': image_url
+                    }
+                else:
+                    logger.warning(f"Article content too short: {article_url}")
+                    return None
+                    
+            except Exception as e:
+                logger.error(f"Error extracting Global Times China article content: {str(e)}")
+                return None
+                
+            finally:
+                self.driver.close()
+                self.driver.switch_to.window(self.driver.window_handles[0])
+                await asyncio.sleep(2)
+                
+        except Exception as e:
+            logger.error(f"Error processing Global Times China article: {str(e)}")
+            if len(self.driver.window_handles) > 1:
+                self.driver.close()
+                self.driver.switch_to.window(self.driver.window_handles[0])
+            return None
+
     async def _process_globaltimes_article(self, title_elem, source, current_url):
         """Helper method to process Global Times articles with error handling"""
         try:
@@ -510,6 +591,315 @@ class ChineseNewsScraper:
                         retry_count += 1
                         continue
 
+                if source.name == "Global Times China":
+                    try:
+                        # Navigate to the main page
+                        self.driver.get("https://www.globaltimes.cn")
+                        
+                        # Wait for the navigation menu to be visible
+                        nav_menu = WebDriverWait(self.driver, 100).until(
+                            EC.presence_of_element_located((By.XPATH, '//*[@id="index_nav"]/div/nav/ul'))
+                        )
+                        logger.info("Navigation menu is visible")
+                        
+                        # Click on the specific menu item (e.g., the second item in the list)
+                        menu_item = nav_menu.find_element(By.XPATH, '//*[@id="index_nav"]/div/nav/ul/li[2]/a')
+                        logger.info(f"Clicking menu item: {menu_item.text}")
+                        menu_item.click()
+                        
+                        # Wait for the new page to load
+                        WebDriverWait(self.driver, 100).until(
+                            EC.presence_of_element_located((By.XPATH, source.article_selector))
+                        )
+                        logger.info("New page loaded successfully")
+                        
+                        # Click on the article selector (opens a new tab)
+                        article_element = self.driver.find_element(By.XPATH, source.article_selector)
+                        logger.info(f"Clicking article: {article_element.text}")
+                        article_element.click()
+                        
+                        # Wait for the new tab to open
+                        WebDriverWait(self.driver, 100).until(EC.number_of_windows_to_be(2))
+                        
+                        # Switch to the new tab
+                        original_window = self.driver.current_window_handle
+                        for window_handle in self.driver.window_handles:
+                            if window_handle != original_window:
+                                self.driver.switch_to.window(window_handle)
+                                break
+                        logger.info("Switched to the new tab")
+                        
+                        # Wait for the article content to load
+                        WebDriverWait(self.driver, 100).until(
+                            EC.presence_of_element_located((By.XPATH, source.body_selector))
+                        )
+                        
+                        # Extract the title
+                        title_element = self.driver.find_element(By.XPATH, source.title_selector)
+                        title = self.content_processor.clean_text(title_element.text)
+                        
+                        # Extract the body content
+                        body_element = self.driver.find_element(By.XPATH, source.body_selector)
+                        body = self.content_processor.clean_text(body_element.text)
+                        
+                        # Extract the image URL
+                        image_url = None
+                        if source.image_selector:
+                            try:
+                                image_element = self.driver.find_element(By.XPATH, source.image_selector)
+                                image_url = image_element.get_attribute('src')
+                            except Exception as e:
+                                logger.warning(f"Could not extract image URL: {str(e)}")
+                        
+                        # Generate a unique hash for the article
+                        article_hash = hashlib.md5(
+                            f"{title}{self.driver.current_url}{source.name}".encode('utf-8')
+                        ).hexdigest()
+                        
+                        if article_hash in self.article_cache:
+                            logger.debug(f"Article already processed: {title}")
+                            self.driver.close()
+                            self.driver.switch_to.window(original_window)
+                            continue
+                        
+                        # Add the article to the list if the body content is sufficient
+                        if len(body) >= 50:
+                            self.article_cache.add(article_hash)
+                            articles.append({
+                                'source': source.name,
+                                'title': title,
+                                'date': datetime.now().isoformat(),
+                                'link': self.driver.current_url,
+                                'body': body,
+                                'content_type': source.content_type.value,
+                                'language': source.language,
+                                'hash': article_hash,
+                                'timestamp': datetime.now().isoformat(),
+                                'image_url': image_url
+                            })
+                            logger.info(f"Successfully processed Global Times China article: {title}")
+                        else:
+                            logger.warning(f"Article content too short: {self.driver.current_url}")
+                        
+                        # Close the new tab and switch back to the original window
+                        self.driver.close()
+                        self.driver.switch_to.window(original_window)
+                        logger.info("Switched back to the original tab")
+                        
+                    except Exception as e:
+                        logger.error(f"Error processing Global Times China article: {str(e)}")
+                        if len(self.driver.window_handles) > 1:
+                            self.driver.close()
+                            self.driver.switch_to.window(self.driver.window_handles[0])
+                        retry_count += 1
+                        continue
+
+                if source.name == "Global Times In-depth":
+                    try:
+                        # Navigate to the main page
+                        self.driver.get("https://www.globaltimes.cn")
+                        
+                        # Wait for the navigation menu to be visible
+                        nav_menu = WebDriverWait(self.driver, 100).until(
+                            EC.presence_of_element_located((By.XPATH, '//*[@id="index_nav"]/div/nav/ul'))
+                        )
+                        logger.info("Navigation menu is visible")
+                        
+                        # Click on the specific menu item (e.g., the second item in the list)
+                        menu_item = nav_menu.find_element(By.XPATH, '//*[@id="index_nav"]/div/nav/ul/li[6]/a')
+                        logger.info(f"Clicking menu item: {menu_item.text}")
+                        menu_item.click()
+                        
+                        # Wait for the new page to load
+                        WebDriverWait(self.driver, 100).until(
+                            EC.presence_of_element_located((By.XPATH, source.article_selector))
+                        )
+                        logger.info("New page loaded successfully")
+                        
+                        # Click on the article selector (opens a new tab)
+                        article_element = self.driver.find_element(By.XPATH, source.article_selector)
+                        logger.info(f"Clicking article: {article_element.text}")
+                        article_element.click()
+                        
+                        # Wait for the new tab to open
+                        WebDriverWait(self.driver, 100).until(EC.number_of_windows_to_be(2))
+                        
+                        # Switch to the new tab
+                        original_window = self.driver.current_window_handle
+                        for window_handle in self.driver.window_handles:
+                            if window_handle != original_window:
+                                self.driver.switch_to.window(window_handle)
+                                break
+                        logger.info("Switched to the new tab")
+                        
+                        # Wait for the article content to load
+                        WebDriverWait(self.driver, 100).until(
+                            EC.presence_of_element_located((By.XPATH, source.body_selector))
+                        )
+                        
+                        # Extract the title
+                        title_element = self.driver.find_element(By.XPATH, source.title_selector)
+                        title = self.content_processor.clean_text(title_element.text)
+                        
+                        # Extract the body content
+                        body_element = self.driver.find_element(By.XPATH, source.body_selector)
+                        body = self.content_processor.clean_text(body_element.text)
+                        
+                        # Extract the image URL
+                        image_url = None
+                        if source.image_selector:
+                            try:
+                                image_element = self.driver.find_element(By.XPATH, source.image_selector)
+                                image_url = image_element.get_attribute('src')
+                            except Exception as e:
+                                logger.warning(f"Could not extract image URL: {str(e)}")
+                        
+                        # Generate a unique hash for the article
+                        article_hash = hashlib.md5(
+                            f"{title}{self.driver.current_url}{source.name}".encode('utf-8')
+                        ).hexdigest()
+                        
+                        if article_hash in self.article_cache:
+                            logger.debug(f"Article already processed: {title}")
+                            self.driver.close()
+                            self.driver.switch_to.window(original_window)
+                            continue
+                        
+                        # Add the article to the list if the body content is sufficient
+                        if len(body) >= 50:
+                            self.article_cache.add(article_hash)
+                            articles.append({
+                                'source': source.name,
+                                'title': title,
+                                'date': datetime.now().isoformat(),
+                                'link': self.driver.current_url,
+                                'body': body,
+                                'content_type': source.content_type.value,
+                                'language': source.language,
+                                'hash': article_hash,
+                                'timestamp': datetime.now().isoformat(),
+                                'image_url': image_url
+                            })
+                            logger.info(f"Successfully processed Global Times In-depth article: {title}")
+                        else:
+                            logger.warning(f"Article content too short: {self.driver.current_url}")
+                        
+                        # Close the new tab and switch back to the original window
+                        self.driver.close()
+                        self.driver.switch_to.window(original_window)
+                        logger.info("Switched back to the original tab")
+                        
+                    except Exception as e:
+                        logger.error(f"Error processing Global Times In-depth article: {str(e)}")
+                        if len(self.driver.window_handles) > 1:
+                            self.driver.close()
+                            self.driver.switch_to.window(self.driver.window_handles[0])
+                        retry_count += 1
+                        continue
+
+                if source.name == "Global Times Source":
+                    try:
+                        # Navigate to the main page
+                        self.driver.get("https://www.globaltimes.cn")
+                        
+                        # Wait for the navigation menu to be visible
+                        nav_menu = WebDriverWait(self.driver, 100).until(
+                            EC.presence_of_element_located((By.XPATH, '//*[@id="index_nav"]/div/nav/ul'))
+                        )
+                        logger.info("Navigation menu is visible")
+                        
+                        # Click on the specific menu item (e.g., the second item in the list)
+                        menu_item = nav_menu.find_element(By.XPATH, '//*[@id="index_nav"]/div/nav/ul/li[3]/a')
+                        logger.info(f"Clicking menu item: {menu_item.text}")
+                        menu_item.click()
+                        
+                        # Wait for the new page to load
+                        WebDriverWait(self.driver, 100).until(
+                            EC.presence_of_element_located((By.XPATH, source.article_selector))
+                        )
+                        logger.info("New page loaded successfully")
+                        
+                        # Click on the article selector (opens a new tab)
+                        article_element = self.driver.find_element(By.XPATH, source.article_selector)
+                        logger.info(f"Clicking article: {article_element.text}")
+                        article_element.click()
+                        
+                        # Wait for the new tab to open
+                        WebDriverWait(self.driver, 100).until(EC.number_of_windows_to_be(2))
+                        
+                        # Switch to the new tab
+                        original_window = self.driver.current_window_handle
+                        for window_handle in self.driver.window_handles:
+                            if window_handle != original_window:
+                                self.driver.switch_to.window(window_handle)
+                                break
+                        logger.info("Switched to the new tab")
+                        
+                        # Wait for the article content to load
+                        WebDriverWait(self.driver, 100).until(
+                            EC.presence_of_element_located((By.XPATH, source.body_selector))
+                        )
+                        
+                        # Extract the title
+                        title_element = self.driver.find_element(By.XPATH, source.title_selector)
+                        title = self.content_processor.clean_text(title_element.text)
+                        
+                        # Extract the body content
+                        body_element = self.driver.find_element(By.XPATH, source.body_selector)
+                        body = self.content_processor.clean_text(body_element.text)
+                        
+                        # Extract the image URL
+                        image_url = None
+                        if source.image_selector:
+                            try:
+                                image_element = self.driver.find_element(By.XPATH, source.image_selector)
+                                image_url = image_element.get_attribute('src')
+                            except Exception as e:
+                                logger.warning(f"Could not extract image URL: {str(e)}")
+                        
+                        # Generate a unique hash for the article
+                        article_hash = hashlib.md5(
+                            f"{title}{self.driver.current_url}{source.name}".encode('utf-8')
+                        ).hexdigest()
+                        
+                        if article_hash in self.article_cache:
+                            logger.debug(f"Article already processed: {title}")
+                            self.driver.close()
+                            self.driver.switch_to.window(original_window)
+                            continue
+                        
+                        # Add the article to the list if the body content is sufficient
+                        if len(body) >= 50:
+                            self.article_cache.add(article_hash)
+                            articles.append({
+                                'source': source.name,
+                                'title': title,
+                                'date': datetime.now().isoformat(),
+                                'link': self.driver.current_url,
+                                'body': body,
+                                'content_type': source.content_type.value,
+                                'language': source.language,
+                                'hash': article_hash,
+                                'timestamp': datetime.now().isoformat(),
+                                'image_url': image_url
+                            })
+                            logger.info(f"Successfully processed Global Times Source article: {title}")
+                        else:
+                            logger.warning(f"Article content too short: {self.driver.current_url}")
+                        
+                        # Close the new tab and switch back to the original window
+                        self.driver.close()
+                        self.driver.switch_to.window(original_window)
+                        logger.info("Switched back to the original tab")
+                        
+                    except Exception as e:
+                        logger.error(f"Error processing Global Times Source article: {str(e)}")
+                        if len(self.driver.window_handles) > 1:
+                            self.driver.close()
+                            self.driver.switch_to.window(self.driver.window_handles[0])
+                        retry_count += 1
+                        continue
+
                 if articles:
                     logger.info(f"Successfully scraped {len(articles)} articles from {source.name}")
                     break
@@ -597,6 +987,45 @@ NEWS_SOURCES = [
         date_selector='',
         link_selector='//div[@class="news-item-intro"]//a[@class="news-headline"]',
         image_selector='//div[@class="cmsImage"]/img',
+        language="en",
+        requires_js=True
+    ),
+    NewsSource(
+        name="Global Times China",
+        url="https://www.globaltimes.cn/china",
+        content_type=ContentType.NEWS,
+        article_selector='/html/body/div[8]/div/div/div/div[1]/div[1]/div[2]/a',
+        title_selector='/html/body/div[4]/div/div/div[2]/div[1]/div[2]',
+        body_selector='//div[@class="article_content"]',
+        date_selector='',
+        link_selector='/html/body/div[8]/div/div/div/div[1]/div[1]/div[2]/a',
+        image_selector='//div[@class="article_content"]//img',
+        language="en",
+        requires_js=True
+    ),
+    NewsSource(
+        name="Global Times In-depth",
+        url="https://www.globaltimes.cn/in-depth",
+        content_type=ContentType.NEWS,
+        article_selector='/html/body/div[8]/div/div/div/div[1]/div[1]/a[2]',
+        title_selector='/html/body/div[4]/div/div/div[2]/div[1]/div[2]',
+        body_selector='//div[@class="article_content"]',
+        date_selector='',
+        link_selector='//*[@id="index_nav"]/div/nav/ul/li[6]/a',
+        image_selector='//div[@class="article_content"]//img',
+        language="en",
+        requires_js=True
+    ),
+    NewsSource(
+        name="Global Times Source",
+        url="https://www.globaltimes.cn/source",
+        content_type=ContentType.NEWS,
+        article_selector='/html/body/div[8]/div/div/div/div[1]/div[1]/a[2]',
+        title_selector='/html/body/div[4]/div/div/div[2]/div[1]/div[2]',
+        body_selector='//div[@class="article_content"]',
+        date_selector='',
+        link_selector='//*[@id="index_nav"]/div/nav/ul/li[6]/a',
+        image_selector='//div[@class="article_content"]//img',
         language="en",
         requires_js=True
     )
