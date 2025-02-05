@@ -12,5 +12,5 @@ venv/
 *.bak
 *.swp
 *.DS_Store
-log/
+logs/
 output/
