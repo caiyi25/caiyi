@@ -899,6 +899,96 @@ class ChineseNewsScraper:
                             self.driver.switch_to.window(self.driver.window_handles[0])
                         retry_count += 1
                         continue
+                if source.name == "CGTN China Detailed":
+                    try:
+                        # Wait for the article link to be visible
+                        article_link = WebDriverWait(self.driver, 100).until(
+                            EC.presence_of_element_located((By.XPATH, source.article_selector))
+                        )
+                        logger.info("Article link found on the main page")
+                        
+                        # Extract the article URL
+                        article_url = article_link.get_attribute('href')
+                        if not article_url:
+                            logger.warning("Missing article URL, skipping")
+                            retry_count += 1
+                            continue
+                        
+                        # Open the article in a new tab
+                        self.driver.execute_script("window.open('');")
+                        self.driver.switch_to.window(self.driver.window_handles[-1])
+                        self.driver.get(article_url)
+                        
+                        try:
+                            # Wait for the title to load
+                            title_element = WebDriverWait(self.driver, 100).until(
+                                EC.presence_of_element_located((By.XPATH, source.title_selector))
+                            )
+                            title = self.content_processor.clean_text(title_element.text)
+                            
+                            # Wait for the body content to load
+                            body_elements = WebDriverWait(self.driver, 100).until(
+                                EC.presence_of_all_elements_located((By.XPATH, source.body_selector))
+                            )
+                            body_text = "\n".join([elem.text.strip() for elem in body_elements if elem.text.strip()])
+                            body_text = self.content_processor.clean_text(body_text)
+                            
+                            # Extract the image URL
+                            image_url = None
+                            if source.image_selector:
+                                try:
+                                    image_element = self.driver.find_element(By.XPATH, source.image_selector)
+                                    image_url = image_element.get_attribute('src')
+                                except Exception as e:
+                                    logger.warning(f"Could not extract image URL: {str(e)}")
+                            
+                            # Generate a unique hash for the article
+                            article_hash = hashlib.md5(
+                                f"{title}{article_url}{source.name}".encode('utf-8')
+                            ).hexdigest()
+                            
+                            if article_hash in self.article_cache:
+                                logger.debug(f"Article already processed: {title}")
+                                self.driver.close()
+                                self.driver.switch_to.window(self.driver.window_handles[0])
+                                continue
+                            
+                            # Add the article to the list if the body content is sufficient
+                            if len(body_text) >= 50:
+                                self.article_cache.add(article_hash)
+                                articles.append({
+                                    'source': source.name,
+                                    'title': title,
+                                    'date': datetime.now().isoformat(),
+                                    'link': article_url,
+                                    'body': body_text,
+                                    'content_type': source.content_type.value,
+                                    'language': source.language,
+                                    'hash': article_hash,
+                                    'timestamp': datetime.now().isoformat(),
+                                    'image_url': image_url
+                                })
+                                logger.info(f"Successfully processed CGTN China Detailed article: {title}")
+                            else:
+                                logger.warning(f"Article content too short: {article_url}")
+                            
+                            # Close the new tab and switch back to the original window
+                            self.driver.close()
+                            self.driver.switch_to.window(self.driver.window_handles[0])
+                            logger.info("Switched back to the original tab")
+                            
+                        except Exception as e:
+                            logger.error(f"Error extracting CGTN China Detailed article content: {str(e)}")
+                            if len(self.driver.window_handles) > 1:
+                                self.driver.close()
+                                self.driver.switch_to.window(self.driver.window_handles[0])
+                            retry_count += 1
+                            continue
+                        
+                    except Exception as e:
+                        logger.error(f"Error processing CGTN China Detailed article: {str(e)}")
+                        retry_count += 1
+                        continue
 
                 if articles:
                     logger.info(f"Successfully scraped {len(articles)} articles from {source.name}")
@@ -1026,6 +1116,19 @@ NEWS_SOURCES = [
         date_selector='',
         link_selector='//*[@id="index_nav"]/div/nav/ul/li[6]/a',
         image_selector='//div[@class="article_content"]//img',
+        language="en",
+        requires_js=True
+    ),
+    NewsSource(
+        name="CGTN China Detailed",
+        url="https://www.cgtn.com/china",
+        content_type=ContentType.NEWS,
+        article_selector='/html/body/div[1]/div[15]/div/div/div/div/div[1]/div[1]/div/div/div[2]/div[1]/h3/a', 
+        title_selector='/html/body/div[1]/div[4]/div/div/div[2]/div[1]/div[1]/div/h1',
+        body_selector='//div[@id="cmsMainContent"]',
+        date_selector='',
+        link_selector='/html/body/div[1]/div[15]/div/div/div/div/div[1]/div[1]/div/div/div[2]/div[1]/h3/a',
+        image_selector='//div[@class="cmsImage"]/img',
         language="en",
         requires_js=True
     )
